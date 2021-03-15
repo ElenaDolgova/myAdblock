@@ -1,0 +1,21 @@
+{
+    "name": "MyAdblock",
+    "version": "1.0",
+    "description": "ABP, uBlock",
+    "permissions": [
+        "webRequest",
+        "webRequestBlocking",
+        "http://*/",
+        "https://*/"
+    ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ],
+        "persistent": true
+    },
+    "browser_action": {
+        "default_popup": "popup.html"
+    },
+    "manifest_version": 2
+}
