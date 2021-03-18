@@ -2,6 +2,9 @@
 
 var enable = true;
 
+// 1. одинарные палки - полное совпадение домена
+// 2. начало с двойных палок - 
+
 // 1. Если url не начинается с / или || это значит 
 const badDomains = [
     "google-analyticts.com",
@@ -9,7 +12,9 @@ const badDomains = [
     "mc.yandex.ru",
     "pagead2.googlesyndication.com",
     "yastatic.net",
-    "a.yandex-team.ru"
+    "a.yandex-team.ru",
+    "i.stack.imgur.com",
+    "cdn.sstatic.net"
     // "/banner/*/img^", // ищем только в pathname. его конец должен быть как /img или /img? или /img/ И содержать /banner/
     // "||ads.example.com^", // ищем только в хосте содержание ads.example.com: или ads.example.com/
     // "|http://example.com/|" // начало с http или https, значит ищем полное совпадение с хостом
@@ -24,25 +29,54 @@ const badDomains = [
 // в pathname в конце просто ничего нет. 
 // и потом берем изначальную строку, обрезаем ее до момента встречи с /img и спрашиваем по регекспу какой подходит 
 
-// var storage = chrome.storage.local;
-
 let leetRequestFilter = function(details) {
     const url = new URL(details.url);
+    var initiator = details.initiator;
     var host = url.host;
-    console.log("host", host);
-    let findedIndex = badDomains.findIndex(item => item == host);
+    
+    let foundIndex = badDomains.findIndex(item => item == host);
     var block = false;
-    if(findedIndex == -1) {
-        var reason = 'There is good domain ';
-        chrome.storage.local.set({[host]: reason}, function() {
-        });
+    var reason = null;
+    if(foundIndex == -1) {
+        reason = {
+            host: [host],
+            isGood: true,
+            details: ''
+        };
     } else {
-        // console.log("findedIndex", findedIndex);
-        var reason = 'There is bad domain ' + badDomains[findedIndex];
-        chrome.storage.local.set({[host]: reason}, function() {
-        });
+        reason = {
+            host: [host],
+            isGood: false,
+            details: badDomains[foundIndex]
+        };
         block = true;
     }
+
+    chrome.storage.local.get(initiator, function (result) {
+        if(isEmpty(result)) {
+            console.log('result is null initiator', initiator);
+            console.log('result is null', result);
+            console.log('result is null reason', reason);
+            var reasons = [];
+            reasons.push(reason);
+            console.log('result is null reasons', reasons);
+            chrome.storage.local.set({[initiator]: reasons}, function() {
+            });
+        } else {
+            
+            var reasons = [];
+        
+            // уникальность todo
+            for(var key in result) {
+                result[key].forEach(function(res, i, arr) {
+                    reasons.push(res);
+                });
+            }
+            reasons.push(reason);
+            chrome.storage.local.set({[initiator]: reasons}, function() {
+            });
+        }
+    });
 
     if(block) {
         console.log("BLOCKED: ", url.host);
@@ -57,3 +91,28 @@ chrome.webRequest.onBeforeRequest.addListener(
     },
     ["blocking"]
 );
+
+function isEmpty(obj) {
+
+    // null and undefined are "empty"
+    if (obj == null) return true;
+
+    // Assume if it has a length property with a non-zero value
+    // that that property is correct.
+    if (obj.length > 0)    return false;
+    if (obj.length === 0)  return true;
+
+    // If it isn't an object at this point
+    // it is empty, but it can't be anything *but* empty
+    // Is it empty?  Depends on your application.
+    if (typeof obj !== "object") return true;
+
+    // Otherwise, does it have any properties of its own?
+    // Note that this doesn't handle
+    // toString and valueOf enumeration bugs in IE < 9
+    for (var key in obj) {
+        if (hasOwnProperty.call(obj, key)) return false;
+    }
+
+    return true;
+}
