@@ -1,13 +1,14 @@
 
-
 function loadPage() {
-    return "Ggggg";
-    // return storage.get(null, function (result) {
-    //     console.log('try to get in load page', result);
-    // });
-    // chrome.tabs.executeScript({
-    //   file: 'alert.js'
-    // }); 
+    chrome.storage.local.get(null, function (result) {
+        var str = '<table><tr><th>Url</th><th>Reason</th></tr><tr>';
+        for (var key in result) {
+            var reason = result[key];
+            str = str.concat('<td>', key, '</td><td>',  reason, '</td></tr>');
+         }
+        str = str.concat('</table>');
+        document.getElementById("p1").innerHTML = str;
+    });
   }
   
-  document.getElementById('p1').addEventListener('click', loadPage);
+  document.getElementById('refresh_button').addEventListener('click', loadPage);
