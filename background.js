@@ -2,77 +2,180 @@
 
 var enable = true;
 
-// 1. одинарные палки - полное совпадение домена
-// 2. начало с двойных палок - 
-
-// 1. Если url не начинается с / или || это значит 
 const badDomains = [
+    "||saas.kek^",
+    "||saas.kek.bar^",
+    "||saas.bar^",
+    "||kek.bar.saas^",
+    "||kek.bar^",
+    "||bar^",
+    "||yastatic.net^",
+    "||imgur.com^",
+    "||yandex-team.ru^",
     "google-analyticts.com",
     "www.google-analytics.com",
     "mc.yandex.ru",
     "pagead2.googlesyndication.com",
-    "yastatic.net",
-    "a.yandex-team.ru",
-    "i.stack.imgur.com",
-    "cdn.sstatic.net"
+    "|a.yandex-team.ru|",
+    "|yt.yandex-team.ru|",
+    "|tsum.yandex-team.ru|",
+    "sb.scorecardresearch.com^",
+    "/banner/*/img^",
+    "/rpc/instances/GetRevisionStats^",
     // "/banner/*/img^", // ищем только в pathname. его конец должен быть как /img или /img? или /img/ И содержать /banner/
     // "||ads.example.com^", // ищем только в хосте содержание ads.example.com: или ads.example.com/
     // "|http://example.com/|" // начало с http или https, значит ищем полное совпадение с хостом
 ]
-// предполагается предподготоваить список фильтров в hashMap
-//  в котором по ключу будут лежать "разобранные" фильтры
-// Например, для "/banner/*/img" в мапе будут лежать /img
-// значение, лежащее по ключу - это список обрезанных фильтров. [/banner/*, /add/*/banner/*]
 
-// приходит урл. сначала для него проверяем хост
-// после проверяем pathname. берем каждую часть пути, начиная с конца. Часть - это от / до / или от / до ? или от / до ничего
-// в pathname в конце просто ничего нет. 
-// и потом берем изначальную строку, обрезаем ее до момента встречи с /img и спрашиваем по регекспу какой подходит 
+let parseHashRegexFullDomain = function() {
+    var hashRegexFullDomain = {};
+    const regexFullDomain = new RegExp('^\\|.*\\|$');
+    
+    badDomains.forEach(function(domain, i, arr) {
+        if (regexFullDomain.test(domain)) {
+            let d = domain.substr(1, domain.length - 2);
+            hashRegexFullDomain[d] = domain;
+        }
+    });
+    return hashRegexFullDomain;
+}
+
+let parseUrlsHashRegexContainsDomain = function() {
+    var hashRegexContainsDomain = {};
+    const regexContainsDomain = new RegExp('^\\|\\|.*\\^$');
+    
+    badDomains.forEach(function(domain, i, arr) {
+        if(regexContainsDomain.test(domain)) {
+            let d = domain.substr(2, domain.length - 3);
+            console.log("split ", d);
+            let lastKey = NaN;
+            let lastTable = NaN;
+            d.split(".").forEach(function(splitStr, i, arr) {
+                console.log("splitting ", splitStr);
+                if(lastKey) {
+                    if(lastTable[splitStr]) {
+                        lastTable = lastTable[splitStr];
+                        lastKey = splitStr;
+                    } else {
+                        let newLastTable = {};
+                        lastTable[splitStr] = newLastTable;
+                        lastTable = newLastTable;
+                        lastKey = splitStr;
+                     }
+                } else {
+                    if(hashRegexContainsDomain[splitStr]) {
+                        lastTable = hashRegexContainsDomain[splitStr];
+                        lastKey = splitStr;
+                    } else {
+                        lastTable = {}
+                        lastKey = splitStr;
+                        hashRegexContainsDomain[splitStr] = lastTable;
+                    }
+                }
+            });
+        }
+    });
+    return hashRegexContainsDomain;
+}
+
+let parseHashRegexContains = function() {
+    var hashRegexContains = [];
+    const regexContainsPathName = new RegExp('[^\\|].*\^$');
+    
+    badDomains.forEach(function(domain, i, arr) {
+       if(regexContainsPathName.test(domain)) {
+            let d = domain.substr(0, domain.length - 1);
+            console.log("regexContainsPathName ", d);
+            hashRegexContains.push(d);
+        }
+    });
+    return hashRegexContains;
+}
+
+
+var hashRegexFullDomain = parseHashRegexFullDomain();
+var hashRegexContainsDomain = parseUrlsHashRegexContainsDomain();
+var hashRegexContains = parseHashRegexContains();
 
 let leetRequestFilter = function(details) {
+
     const url = new URL(details.url);
-    var initiator = details.initiator;
-    var host = url.host;
-    
-    let foundIndex = badDomains.findIndex(item => item == host);
-    var block = false;
-    var reason = null;
-    if(foundIndex == -1) {
-        reason = {
-            host: [host],
-            isGood: true,
-            details: ''
-        };
-    } else {
-        reason = {
-            host: [host],
-            isGood: false,
-            details: badDomains[foundIndex]
-        };
+    let initiator = details.initiator;
+    let host = url.host;
+
+    let block = false;
+    let reason = {
+        host: host,
+        isGood: true,
+        details: ''
+    };
+
+    if(hashRegexFullDomain[host]) {
+    reason = {
+        host: host,
+        isGood: false,
+        details: hashRegexFullDomain[host]
+    };
         block = true;
+    }
+
+    if(!block) {
+        let isContains = false;
+        let lastFountTable = NaN;
+        host.split(".").forEach(function(splitHost, i, arr) { // ищем пока не конец или пока не нашли
+           if(hashRegexContainsDomain[splitHost]) {
+            lastFountTable = hashRegexContainsDomain[splitHost];
+           } 
+        });
+    for(let key in hashRegexContainsDomain) { // contains 
+        let reg = new RegExp(key);
+        if(reg.test(host)) {
+            reason = {
+                host: host,
+                isGood: false,
+                details: hashRegexContainsDomain[key]
+            };
+            block = true;
+        }
+    }
+}
+
+    let path = url.pathname;
+    if(!block) {
+        hashRegexContains.forEach(function(res, i, arr) {
+            let reg = new RegExp(res);
+            if(reg.test(path)){
+                reason = {
+                    host: path,
+                    isGood: false,
+                    details: res
+                };
+                block = true;
+            }
+        });
     }
 
     chrome.storage.local.get(initiator, function (result) {
         if(isEmpty(result)) {
-            console.log('result is null initiator', initiator);
-            console.log('result is null', result);
-            console.log('result is null reason', reason);
-            var reasons = [];
+            let reasons = [];
             reasons.push(reason);
-            console.log('result is null reasons', reasons);
             chrome.storage.local.set({[initiator]: reasons}, function() {
             });
         } else {
-            
-            var reasons = [];
+            let reasons = [];
         
-            // уникальность todo
-            for(var key in result) {
+            let isNeedToAdd = true;
+            for(let key in result) {
                 result[key].forEach(function(res, i, arr) {
+                    if(res.host == reason.host){
+                        isNeedToAdd = false;
+                    }
                     reasons.push(res);
                 });
             }
-            reasons.push(reason);
+            if(isNeedToAdd) {
+                reasons.push(reason);
+            }
             chrome.storage.local.set({[initiator]: reasons}, function() {
             });
         }

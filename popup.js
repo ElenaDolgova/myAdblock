@@ -1,16 +1,12 @@
 function loadBlockedUrls(det) {
-    chrome.tabs.query({active: true}, tabs => {
-        const url = new URL(tabs[1].url);
-        // document.getElementById("p1").innerHTML = str;
-        console.log(url);
-        console.log(tabs[1]);
+    chrome.tabs.query({active: true, currentWindow: true}, tabs => {
+        const url = new URL(tabs[0].url);
         
         chrome.storage.local.get(url.origin, function (reasons) {
             console.log("inside ", reasons);
             var str = '<table><tr><th>Url</th></tr><tr>';
 
             for(var key in reasons){
-
                 reasons[key].forEach(function(reason, i, arr) {
                     var host = reason.host;
                     var isGood = reason.isGood;
