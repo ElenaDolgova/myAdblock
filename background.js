@@ -4,7 +4,7 @@ var enable = true;
 
 const badDomains = [
     "||saas.kek^",
-    "||saas.kek.bar^",
+    "||saas.kek.lol.bar^",
     "||saas.bar^",
     "||kek.bar.saas^",
     "||kek.bar^",
@@ -48,27 +48,33 @@ let parseUrlsHashRegexContainsDomain = function() {
         if(regexContainsDomain.test(domain)) {
             let d = domain.substr(2, domain.length - 3);
             console.log("split ", d);
-            let lastKey = NaN;
+            // let lastKey = NaN;
             let lastTable = NaN;
+            if(d == "kek.bar"){
+                let a = false;
+            }
             d.split(".").forEach(function(splitStr, i, arr) {
                 console.log("splitting ", splitStr);
-                if(lastKey) {
-                    if(lastTable[splitStr]) {
-                        lastTable = lastTable[splitStr];
-                        lastKey = splitStr;
+                let leaf = (i == arr.length - 1);
+                if(lastTable) {
+                    if(lastTable.tree[splitStr]) {
+                        lastTable = lastTable.tree[splitStr];
+                        if(leaf) {
+                            lastTable.isLeaf = leaf;
+                        }
                     } else {
-                        let newLastTable = {};
-                        lastTable[splitStr] = newLastTable;
+                        let newLastTable = {isLeaf: leaf, tree : {}};
+                        lastTable.tree[splitStr] = newLastTable;
                         lastTable = newLastTable;
-                        lastKey = splitStr;
                      }
                 } else {
                     if(hashRegexContainsDomain[splitStr]) {
                         lastTable = hashRegexContainsDomain[splitStr];
-                        lastKey = splitStr;
+                        if(leaf) {
+                            lastTable.isLeaf = leaf;
+                        }
                     } else {
-                        lastTable = {}
-                        lastKey = splitStr;
+                        lastTable = {isLeaf: leaf, tree : {}};
                         hashRegexContainsDomain[splitStr] = lastTable;
                     }
                 }
