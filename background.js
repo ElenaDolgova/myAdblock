@@ -21,6 +21,8 @@ const badDomains = [
     "|tsum.yandex-team.ru|",
     "sb.scorecardresearch.com^",
     "/banner/*/img^",
+    "/*/banner/img^",
+    "/banner/img/*^",
     "/rpc/instances/GetRevisionStats^",
     // "/banner/*/img^", // ищем только в pathname. его конец должен быть как /img или /img? или /img/ И содержать /banner/
     // "||ads.example.com^", // ищем только в хосте содержание ads.example.com: или ads.example.com/
@@ -47,23 +49,22 @@ let parseUrlsHashRegexContainsDomain = function() {
     badDomains.forEach(function(domain, i, arr) {
         if(regexContainsDomain.test(domain)) {
             let d = domain.substr(2, domain.length - 3);
-            console.log("split ", d);
-            // let lastKey = NaN;
             let lastTable = NaN;
-            if(d == "kek.bar"){
-                let a = false;
-            }
             d.split(".").forEach(function(splitStr, i, arr) {
-                console.log("splitting ", splitStr);
                 let leaf = (i == arr.length - 1);
+                let reason = NaN;
+                if(leaf){
+                    reason = domain;
+                }
                 if(lastTable) {
                     if(lastTable.tree[splitStr]) {
                         lastTable = lastTable.tree[splitStr];
-                        if(leaf) {
+                        if (leaf) {
                             lastTable.isLeaf = leaf;
+                            lastTable.reason = reason;
                         }
                     } else {
-                        let newLastTable = {isLeaf: leaf, tree : {}};
+                        let newLastTable = {isLeaf: leaf, tree : {}, reason: reason};
                         lastTable.tree[splitStr] = newLastTable;
                         lastTable = newLastTable;
                      }
@@ -74,7 +75,7 @@ let parseUrlsHashRegexContainsDomain = function() {
                             lastTable.isLeaf = leaf;
                         }
                     } else {
-                        lastTable = {isLeaf: leaf, tree : {}};
+                        lastTable = {isLeaf: leaf, tree : {}, reason: reason};
                         hashRegexContainsDomain[splitStr] = lastTable;
                     }
                 }
@@ -84,24 +85,154 @@ let parseUrlsHashRegexContainsDomain = function() {
     return hashRegexContainsDomain;
 }
 
-let parseHashRegexContains = function() {
-    var hashRegexContains = [];
-    const regexContainsPathName = new RegExp('[^\\|].*\^$');
+let parsePathWithStar = function() {
+    var pathWithStar = {};
     
     badDomains.forEach(function(domain, i, arr) {
-       if(regexContainsPathName.test(domain)) {
-            let d = domain.substr(0, domain.length - 1);
-            console.log("regexContainsPathName ", d);
-            hashRegexContains.push(d);
+       if(domain.startsWith("/") && domain.endsWith("^")) {
+            let d = domain.substr(1, domain.length - 2);
+            let lastTable = NaN;
+
+            let splittingPath =  d.split("/");
+
+            for(let i = 0; i < splittingPath.length; i++) {
+                let leaf = (i == splittingPath.length - 1);
+                let splitStr = splittingPath[i];
+                let reason = NaN;
+
+                if(leaf || splitStr == "*") {
+                    reason = domain;
+                }
+                if(lastTable) {
+                    if(lastTable.tree[splitStr]) {
+                        lastTable = lastTable.tree[splitStr];
+                        if (leaf) {
+                            lastTable.isLeaf = leaf;
+                            lastTable.reason = reason;
+                        }
+                    } else {
+                        let newLastTable = {isLeaf: leaf, tree : {}, reason: [reason]};
+                        lastTable.tree[splitStr] = newLastTable;
+                        lastTable = newLastTable;
+                     }
+                } else {
+                    if(pathWithStar[splitStr]) {
+                        lastTable = pathWithStar[splitStr];
+                        if(leaf) {
+                            lastTable.isLeaf = leaf;
+                        }
+                    } else {
+                        lastTable = {isLeaf: leaf, tree : {}, reason: [reason]};
+                        pathWithStar[splitStr] = lastTable;
+                    }
+                }
+            }
+
+            // d.split("/").forEach(function(splitStr, i, arr) {
+            //     let leaf = (i == arr.length - 1);
+            //     let reason = NaN;
+            //     if(leaf || splitStr == "*"){
+            //         reason = domain;
+            //     }
+            //     if(lastTable) {
+            //         if(lastTable.tree[splitStr]) {
+            //             lastTable = lastTable.tree[splitStr];
+            //             if (leaf) {
+            //                 lastTable.isLeaf = leaf;
+            //                 lastTable.isLeaf = reason;
+            //             }
+            //         } else {
+            //             let newLastTable = {isLeaf: leaf, tree : {}, reason: reason};
+            //             lastTable.tree[splitStr] = newLastTable;
+            //             lastTable = newLastTable;
+            //          }
+            //     } else {
+            //         if(pathWithStar[splitStr]) {
+            //             lastTable = pathWithStar[splitStr];
+            //             if(leaf) {
+            //                 lastTable.isLeaf = leaf;
+            //             }
+            //         } else {
+            //             lastTable = {isLeaf: leaf, tree : {}, reason: reason};
+            //             pathWithStar[splitStr] = lastTable;
+            //         }
+            //     }
+            // });
         }
     });
-    return hashRegexContains;
+    return pathWithStar;
 }
 
 
 var hashRegexFullDomain = parseHashRegexFullDomain();
 var hashRegexContainsDomain = parseUrlsHashRegexContainsDomain();
-var hashRegexContains = parseHashRegexContains();
+var pathWithStar = parsePathWithStar();
+
+let getDetailsIfBlock = function(path) {
+    let lastFoundTable = NaN;
+        let details = NaN;
+        let arrSplit = path.split("/");
+
+        for(let i = 0; i < arrSplit.length; i++) {
+            let isEndOfPath = (i == arrSplit.length - 1);
+            let splitPath = arrSplit[i];
+
+            if(lastFoundTable) {
+                if(lastFoundTable.tree["*"]) {
+                    let rs = lastFoundTable.tree["*"].reason;
+                    let startIndex = rs.indexOf("*") + 2;
+                    let end = rs.substr(startIndex, rs.length - startIndex - 1);
+                     // если звездочка стоит в самом конце правила, то правило подходит 
+                     //  ИЛИ 
+                     // если после звезды путь не подходит, можем переходить на след уровень
+                    if(isEndOfPath || path.endsWith(end)) {
+                        details = rs;
+                        break;
+                    }
+                    if(lastFoundTable.tree[splitPath]) {
+                        lastFoundTable = lastFoundTable.tree[splitPath];
+                    } else {
+                        break;
+                    }
+                } else if (lastFoundTable.tree[splitPath]) {
+                    lastFoundTable = lastFoundTable.tree[splitPath];
+                    if(isEndOfPath && lastFoundTable.isLeaf) {
+                        details = lastFoundTable.reason;
+                        break;
+                    }
+                }
+            } else {
+                // сюда заходим только один раз, в самом начале
+                if(!pathWithStar[splitPath] && !pathWithStar["*"]) {
+                    break;
+                }
+
+                if(pathWithStar["*"]) {
+                    let rs = pathWithStar["*"].reason;
+                    let startIndex = rs.indexOf("*") + 2;
+                    let end = rs.substr(startIndex, rs.length - startIndex - 1);
+                    if(isEndOfPath || path.endsWith(end)) {
+                        details = pathWithStar["*"].reason;
+                        break;
+                    }
+                    if(pathWithStar[splitPath]) {
+                        lastFoundTable = pathWithStar[splitPath];
+                    } else {
+                        break;
+                    }
+                } else if (pathWithStar[splitPath]){
+                    lastFoundTable = pathWithStar[splitPath];
+                    if(isEndOfPath && lastFoundTable.isLeaf) {
+                        details = lastFoundTable.reason;
+                        break;
+                    }
+                }
+            }
+    }
+
+    return details;
+}
+
 
 let leetRequestFilter = function(details) {
 
@@ -109,56 +240,67 @@ let leetRequestFilter = function(details) {
     let initiator = details.initiator;
     let host = url.host;
 
-    let block = false;
     let reason = {
         host: host,
         isGood: true,
         details: ''
     };
 
+    let reasonDetails = NaN;
     if(hashRegexFullDomain[host]) {
-    reason = {
-        host: host,
-        isGood: false,
-        details: hashRegexFullDomain[host]
-    };
-        block = true;
+        reasonDetails = hashRegexFullDomain[host];
     }
 
-    if(!block) {
-        let isContains = false;
+    if(!reasonDetails) {
         let lastFountTable = NaN;
         host.split(".").forEach(function(splitHost, i, arr) { // ищем пока не конец или пока не нашли
-           if(hashRegexContainsDomain[splitHost]) {
-            lastFountTable = hashRegexContainsDomain[splitHost];
+           if(lastFountTable) { // если уже нашли первое вхождение, то все остальные должны быть в дереве
+                if (lastFountTable.tree[splitHost]) {
+                    lastFountTable = lastFountTable.tree[splitHost];
+                    if(lastFountTable.isLeaf) {
+                        reasonDetails = lastFountTable.reason;
+                        // как выйти? 
+                    }
+                }
+           } else if( hashRegexContainsDomain[splitHost]) {
+                lastFountTable = hashRegexContainsDomain[splitHost];
            } 
         });
-    for(let key in hashRegexContainsDomain) { // contains 
-        let reg = new RegExp(key);
-        if(reg.test(host)) {
+}
+
+    let path = url.pathname.substr(1, url.pathname.length - 1);
+    path = "banner/pop/img/lol";
+    if(!reasonDetails) {
+        let details = getDetailsIfBlock(path);
+        console.log("path: ", path, " details ", details, " NO");
+
+        path = "banner/pop/img";
+        details = getDetailsIfBlock(path);
+        console.log("path: ", path, " details ", details, "YES");
+
+        path = "banner/img/loly/pop";
+        details = getDetailsIfBlock(path);
+        console.log("path: ", path, " details ", details, "YES");
+
+        path = "loly/pop/banner/img";
+        details = getDetailsIfBlock(path);
+        console.log("path: ", path, " details ", details, "YES");
+
+        path = "loly/pop/banner/img/loly";
+        details = getDetailsIfBlock(path);
+        console.log("path: ", path, " details ", details, "NO");
+
+        if(reasonDetails){
+            host = path;
+        }
+    }
+
+    if(reasonDetails) {
             reason = {
                 host: host,
                 isGood: false,
-                details: hashRegexContainsDomain[key]
-            };
-            block = true;
-        }
-    }
-}
-
-    let path = url.pathname;
-    if(!block) {
-        hashRegexContains.forEach(function(res, i, arr) {
-            let reg = new RegExp(res);
-            if(reg.test(path)){
-                reason = {
-                    host: path,
-                    isGood: false,
-                    details: res
-                };
-                block = true;
+                details: reasonDetails
             }
-        });
     }
 
     chrome.storage.local.get(initiator, function (result) {
@@ -190,7 +332,7 @@ let leetRequestFilter = function(details) {
     if(block) {
         console.log("BLOCKED: ", url.host);
     }
-    return {cancel: block};
+    return {cancel: false};
 }
 
 chrome.webRequest.onBeforeRequest.addListener(
