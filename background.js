@@ -12,18 +12,20 @@ const badDomains = [
     "||yastatic.net^",
     "||imgur.com^",
     "||yandex-team.ru^",
-    "google-analyticts.com",
+    "||google-analytics.com^",
     "www.google-analytics.com",
-    "mc.yandex.ru",
-    "pagead2.googlesyndication.com",
+    "||mc.yandex.ru^",
+    "||pagead2.googlesyndication.com^",
     "|a.yandex-team.ru|",
     "|yt.yandex-team.ru|",
     "|tsum.yandex-team.ru|",
-    "sb.scorecardresearch.com^",
     "/banner/*/img^",
     "/*/banner/img^",
     "/banner/img/*^",
-    "/rpc/instances/GetRevisionStats^",
+    "/banner/*/popy/hop^", 
+    "/metrika/*^",
+    "/global-notifications/*/butterfly.js^",
+    "/static/media/*^"
     // "/banner/*/img^", // ищем только в pathname. его конец должен быть как /img или /img? или /img/ И содержать /banner/
     // "||ads.example.com^", // ищем только в хосте содержание ads.example.com: или ads.example.com/
     // "|http://example.com/|" // начало с http или https, значит ищем полное совпадение с хостом
@@ -88,76 +90,37 @@ let parseUrlsHashRegexContainsDomain = function() {
 let parsePathWithStar = function() {
     var pathWithStar = {};
     
-    badDomains.forEach(function(domain, i, arr) {
-       if(domain.startsWith("/") && domain.endsWith("^")) {
-            let d = domain.substr(1, domain.length - 2);
+    badDomains.forEach(function(ruleWithStar, i, arr) {
+       if(ruleWithStar.startsWith("/") && ruleWithStar.endsWith("^")) {
+            let d = ruleWithStar.substr(1, ruleWithStar.length - 2);
             let lastTable = NaN;
 
             let splittingPath =  d.split("/");
 
             for(let i = 0; i < splittingPath.length; i++) {
-                let leaf = (i == splittingPath.length - 1);
                 let splitStr = splittingPath[i];
-                let reason = NaN;
 
-                if(leaf || splitStr == "*") {
-                    reason = domain;
-                }
                 if(lastTable) {
                     if(lastTable.tree[splitStr]) {
                         lastTable = lastTable.tree[splitStr];
-                        if (leaf) {
-                            lastTable.isLeaf = leaf;
-                            lastTable.reason = reason;
-                        }
                     } else {
-                        let newLastTable = {isLeaf: leaf, tree : {}, reason: [reason]};
+                        let newLastTable = {tree : {}, reason: []};
                         lastTable.tree[splitStr] = newLastTable;
                         lastTable = newLastTable;
                      }
                 } else {
                     if(pathWithStar[splitStr]) {
                         lastTable = pathWithStar[splitStr];
-                        if(leaf) {
-                            lastTable.isLeaf = leaf;
-                        }
                     } else {
-                        lastTable = {isLeaf: leaf, tree : {}, reason: [reason]};
+                        lastTable = {tree : {}, reason: []};
                         pathWithStar[splitStr] = lastTable;
                     }
                 }
+                if(splitStr == "*") { // пришел конец
+                    lastTable.reason.push(ruleWithStar);
+                    break;
+                }
             }
-
-            // d.split("/").forEach(function(splitStr, i, arr) {
-            //     let leaf = (i == arr.length - 1);
-            //     let reason = NaN;
-            //     if(leaf || splitStr == "*"){
-            //         reason = domain;
-            //     }
-            //     if(lastTable) {
-            //         if(lastTable.tree[splitStr]) {
-            //             lastTable = lastTable.tree[splitStr];
-            //             if (leaf) {
-            //                 lastTable.isLeaf = leaf;
-            //                 lastTable.isLeaf = reason;
-            //             }
-            //         } else {
-            //             let newLastTable = {isLeaf: leaf, tree : {}, reason: reason};
-            //             lastTable.tree[splitStr] = newLastTable;
-            //             lastTable = newLastTable;
-            //          }
-            //     } else {
-            //         if(pathWithStar[splitStr]) {
-            //             lastTable = pathWithStar[splitStr];
-            //             if(leaf) {
-            //                 lastTable.isLeaf = leaf;
-            //             }
-            //         } else {
-            //             lastTable = {isLeaf: leaf, tree : {}, reason: reason};
-            //             pathWithStar[splitStr] = lastTable;
-            //         }
-            //     }
-            // });
         }
     });
     return pathWithStar;
@@ -174,30 +137,32 @@ let getDetailsIfBlock = function(path) {
         let arrSplit = path.split("/");
 
         for(let i = 0; i < arrSplit.length; i++) {
-            let isEndOfPath = (i == arrSplit.length - 1);
+            let isEndOfPath = i == arrSplit.length - 1; 
             let splitPath = arrSplit[i];
 
             if(lastFoundTable) {
                 if(lastFoundTable.tree["*"]) {
-                    let rs = lastFoundTable.tree["*"].reason;
-                    let startIndex = rs.indexOf("*") + 2;
-                    let end = rs.substr(startIndex, rs.length - startIndex - 1);
-                     // если звездочка стоит в самом конце правила, то правило подходит 
-                     //  ИЛИ 
-                     // если после звезды путь не подходит, можем переходить на след уровень
-                    if(isEndOfPath || path.endsWith(end)) {
-                        details = rs;
+                    let reasons = lastFoundTable.tree["*"].reason;
+
+                    for(let k = 0; k < reasons.length; k++) {
+                        let rs = reasons[k];
+                        let startIndex = rs.indexOf("*") + 2;
+                        let end = rs.substr(startIndex, rs.length - startIndex - 1);
+                        // если звездочка стоит в самом конце правила, то правило подходит 
+                        //  ИЛИ 
+                        // если после звезды путь не подходит, можем переходить на след уровень
+                        if(path.endsWith(end)) {
+                            details = rs;
+                            break;
+                        }
+                    }
+                    if(details || !lastFoundTable.tree[splitPath]){
                         break;
                     }
-                    if(lastFoundTable.tree[splitPath]) {
-                        lastFoundTable = lastFoundTable.tree[splitPath];
-                    } else {
-                        break;
-                    }
+                    lastFoundTable = lastFoundTable.tree[splitPath];
                 } else if (lastFoundTable.tree[splitPath]) {
                     lastFoundTable = lastFoundTable.tree[splitPath];
-                    if(isEndOfPath && lastFoundTable.isLeaf) {
-                        details = lastFoundTable.reason;
+                    if(isEndOfPath) {
                         break;
                     }
                 }
@@ -208,22 +173,26 @@ let getDetailsIfBlock = function(path) {
                 }
 
                 if(pathWithStar["*"]) {
-                    let rs = pathWithStar["*"].reason;
-                    let startIndex = rs.indexOf("*") + 2;
-                    let end = rs.substr(startIndex, rs.length - startIndex - 1);
-                    if(isEndOfPath || path.endsWith(end)) {
-                        details = pathWithStar["*"].reason;
+                    let reasons = pathWithStar["*"].reason;
+                    for(let k = 0; k < reasons.length; k++) {
+                        let rs = reasons[k];
+                        let startIndex = rs.indexOf("*") + 2;
+                        let end = rs.substr(startIndex, rs.length - startIndex - 1);
+                        if(path.endsWith(end)) {
+                            details = rs;
+                            break;
+                        }
+                    }
+                    // если нашли подходящее правило 
+                    // ИЛИ
+                    // если в дереве нет подходящего узла
+                    if (details || !pathWithStar[splitPath]) {
                         break;
                     }
-                    if(pathWithStar[splitPath]) {
-                        lastFoundTable = pathWithStar[splitPath];
-                    } else {
-                        break;
-                    }
+                    lastFoundTable = pathWithStar[splitPath];
                 } else if (pathWithStar[splitPath]){
                     lastFoundTable = pathWithStar[splitPath];
-                    if(isEndOfPath && lastFoundTable.isLeaf) {
-                        details = lastFoundTable.reason;
+                    if(isEndOfPath) {
                         break;
                     }
                 }
@@ -238,6 +207,9 @@ let leetRequestFilter = function(details) {
 
     const url = new URL(details.url);
     let initiator = details.initiator;
+    if(!initiator) {
+        initiator = url.host;
+    }
     let host = url.host;
 
     let reason = {
@@ -253,44 +225,56 @@ let leetRequestFilter = function(details) {
 
     if(!reasonDetails) {
         let lastFountTable = NaN;
-        host.split(".").forEach(function(splitHost, i, arr) { // ищем пока не конец или пока не нашли
-           if(lastFountTable) { // если уже нашли первое вхождение, то все остальные должны быть в дереве
+        let splttingHosts = host.split(".");
+
+        for(let i = 0; i < splttingHosts.length; i++) {
+            let splitHost = splttingHosts[i];
+            // ищем пока не конец или пока не нашли
+            // если уже нашли первое вхождение, то все остальные должны быть в дереве
+            if(lastFountTable) {
                 if (lastFountTable.tree[splitHost]) {
                     lastFountTable = lastFountTable.tree[splitHost];
                     if(lastFountTable.isLeaf) {
                         reasonDetails = lastFountTable.reason;
-                        // как выйти? 
+                        break;
                     }
                 }
            } else if( hashRegexContainsDomain[splitHost]) {
                 lastFountTable = hashRegexContainsDomain[splitHost];
-           } 
-        });
+           }
+        }
 }
 
     let path = url.pathname.substr(1, url.pathname.length - 1);
-    path = "banner/pop/img/lol";
     if(!reasonDetails) {
-        let details = getDetailsIfBlock(path);
-        console.log("path: ", path, " details ", details, " NO");
+        // let details = NaN;
+        // path = "loly/pop/banner/img";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, "YES");
 
-        path = "banner/pop/img";
-        details = getDetailsIfBlock(path);
-        console.log("path: ", path, " details ", details, "YES");
+        // path = "banner/pop/img/lol";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, " NO");
 
-        path = "banner/img/loly/pop";
-        details = getDetailsIfBlock(path);
-        console.log("path: ", path, " details ", details, "YES");
+        // path = "banner/pop/img";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, "YES");
 
-        path = "loly/pop/banner/img";
-        details = getDetailsIfBlock(path);
-        console.log("path: ", path, " details ", details, "YES");
+        // path = "banner/img/loly/pop";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, "YES");
 
-        path = "loly/pop/banner/img/loly";
-        details = getDetailsIfBlock(path);
-        console.log("path: ", path, " details ", details, "NO");
+        // path = "loly/pop/banner/img/loly";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, "NO");
 
-        if(reasonDetails){
+        // path = "banner/img/loly/popy/hop";
+        // details = getDetailsIfBlock(path);
+        // console.log("path: ", path, " details ", details, "YES");
+        // console.log("path ", path);
+
+        reasonDetails = getDetailsIfBlock(path);
+        if(reasonDetails) {
             host = path;
         }
     }
@@ -329,8 +313,9 @@ let leetRequestFilter = function(details) {
         }
     });
 
-    if(block) {
+    if(reasonDetails) {
         console.log("BLOCKED: ", url.host);
+        return {cancel: true};
     }
     return {cancel: false};
 }
