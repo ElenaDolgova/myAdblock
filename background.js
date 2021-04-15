@@ -313,10 +313,10 @@ let leetRequestFilter = function(details) {
         }
     });
 
-    if(reasonDetails) {
-        console.log("BLOCKED: ", url.host);
-        return {cancel: true};
-    }
+    // if(reasonDetails) {
+    //     console.log("BLOCKED: ", url.host);
+    //     return {cancel: true};
+    // }
     return {cancel: false};
 }
 
